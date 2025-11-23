@@ -1,3 +1,5 @@
+import numpy as np
+
 def ward_distance(cl1, cl2):
     """
     Calcule la distance de Ward entre deux clusters.

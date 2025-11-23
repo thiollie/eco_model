@@ -1,4 +1,56 @@
-if plot_input:
+import re
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+try:
+    # Prefer package-relative import if available
+    from .aff_analyse_fc import aff_analyse_fc
+except Exception:
+    # Fallback when executed via %run without package context
+    from aff_analyse_fc import aff_analyse_fc
+
+plot_input_flag = globals().get('plot_input', False)
+
+if plot_input_flag:
+
+    # Reference year for cost/use plots (falls back to first scenario year)
+    reference_year = globals().get('year_start', years.start)
+
+    # Shared layout primitives so that every plot uses the same visual grammar
+    DEFAULT_FIG_W = globals().get('fig_w', 760)
+    DEFAULT_FIG_H = globals().get('fig_h', 360)
+    COMMON_MARGIN = dict(l=70, r=30, t=60, b=55)
+    WIDE_MARGIN = dict(l=80, r=30, t=60, b=60)
+    SUBPLOT_MARGIN = dict(l=70, r=30, t=50, b=40)
+
+    def apply_layout(fig, *, title, x_title=None, y_title=None, width=None, height=None,
+                     legend=True, margin=None, xaxis_extra=None, yaxis_extra=None):
+        """Apply harmonised layout defaults to a Plotly figure."""
+        layout_kwargs = dict(
+            template="cineaste",
+            title=dict(text=title, x=0.02, xanchor='left'),
+            xaxis_title=x_title,
+            yaxis_title=y_title,
+            width=width or DEFAULT_FIG_W,
+            height=height or DEFAULT_FIG_H,
+            margin=margin or COMMON_MARGIN,
+            legend=dict(
+                orientation='h',
+                yanchor='bottom',
+                y=1.03,
+                x=0,
+                xanchor='left'
+            )
+        )
+        if not legend:
+            layout_kwargs['showlegend'] = False
+        fig.update_layout(**layout_kwargs)
+        if xaxis_extra:
+            fig.update_xaxes(**xaxis_extra)
+        if yaxis_extra:
+            fig.update_yaxes(**yaxis_extra)
+        return fig
 
     fig_input = {}
     
@@ -17,8 +69,16 @@ if plot_input:
             demand_y[y] = demand_y_tmp / 1e6 # => to get TWh
 
         fig_input[key] = go.Figure()
-        fig_input[key].add_trace(go.Scatter(x = list(demand_y.keys()) , y = list(demand_y.values()),line=dict(width=2.0),mode='lines+markers'))
-        fig_input[key].update_layout(title="Demand Evolution" ,yaxis_title='Demand [TWh]',xaxis_title="years",width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+        fig_input[key].add_trace(
+            go.Scatter(
+                x=list(demand_y.keys()),
+                y=list(demand_y.values()),
+                line=dict(width=2.5),
+                mode='lines+markers',
+                marker=dict(size=6)
+            )
+        )
+        apply_layout(fig_input[key], title="Demand evolution", y_title='Demand [TWh]', x_title="Year")
 
 ##########################################################################
 # Techno Costs
@@ -29,9 +89,16 @@ if plot_input:
         fig_input[key] = go.Figure()
         for t in techno.keys():
             n = techno[t].get_name() + ' ' + techno[t].get_title()
-            fig_input[key].add_trace(go.Scatter(x = list(years_world) , y = list(techno[t].get_eco().get_cost_profile_fix().values()),line=dict(width=2.0,shape='hv'),mode='lines',name=n))
-        fig_input[key].update_layout(title="Fix Cost Evolution" ,yaxis_title='Total Cost [€/MW/y]',xaxis_title="years",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+            fig_input[key].add_trace(
+                go.Scatter(
+                    x=list(years_world),
+                    y=list(techno[t].get_eco().get_cost_profile_fix().values()),
+                    line=dict(width=2.0, shape='hv'),
+                    mode='lines',
+                    name=n
+                )
+            )
+        apply_layout(fig_input[key], title="Fixed cost evolution", y_title='Total cost [€/MW/y]', x_title="Year")
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
     
     key = 'tot_costs'
@@ -40,10 +107,21 @@ if plot_input:
         for t in techno.keys():
             U = np.arange(1, 8761, 1)
             n = techno[t].get_name() + ' ' + techno[t].get_title()
-            # print(techno_d[tec].get_type())
-            fig_input[key].add_trace(go.Scatter(x = U, y = techno[t].get_eco().get_cost_profile_tot(year),line=dict(width=2.0,shape='hv'),mode='lines',name=n))
-        fig_input[key].update_layout(title="Total cost for the year - " + str(year) ,yaxis_title='Total Cost [€/MW/y]',xaxis_title="Use (h/y)",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+            fig_input[key].add_trace(
+                go.Scatter(
+                    x=U,
+                    y=techno[t].get_eco().get_cost_profile_tot(reference_year),
+                    line=dict(width=2.0, shape='hv'),
+                    mode='lines',
+                    name=n
+                )
+            )
+        apply_layout(
+            fig_input[key],
+            title=f"Total cost profile — {reference_year}",
+            y_title='Total cost [€/MW/y]',
+            x_title="Use (h/y)"
+        )
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
     
 ##########################################################################
@@ -67,14 +145,20 @@ if plot_input:
             
             if historic_data_capa is not None and isinstance(historic_data_capa, dict) and any(value != 0 for value in historic_data_capa.values()):
                 x,y = list(historic_data_inv.keys()),list(historic_data_inv.values())
-                fig_input[key].add_trace(go.Bar(name=name, x=x, y=y), col=1, row=n)
+                fig_input[key].add_trace(go.Bar(name=name, x=x, y=y, marker_line_width=0), col=1, row=n)
                 x,y = list(historic_data_capa.keys()),list(historic_data_capa.values())
-                fig_input[key].add_trace(go.Scatter(name=name, x=x, y=y), col=2, row=n)
+                fig_input[key].add_trace(go.Scatter(name=name, x=x, y=y, line=dict(width=2)), col=2, row=n)
                 n += 1
     
-        fig_input[key].update_layout(title_text="Historic data for : Investment | Capacity [MW]",
-                          height=n_of_hist_data_to_plot*180, width=750,
-                          margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+        apply_layout(
+            fig_input[key],
+            title="Historic data — investment vs capacity",
+            x_title="Year",
+            y_title="MW",
+            width=DEFAULT_FIG_W,
+            height=max(DEFAULT_FIG_H, n_of_hist_data_to_plot * 220),
+            margin=SUBPLOT_MARGIN
+        )
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
     
 ##########################################################################
@@ -88,9 +172,16 @@ if plot_input:
         for t in techno.keys():
             n = techno[t].get_name() + ' ' + techno[t].get_title()
             if re.match('gas', n):
-                fig_input[key].add_trace(go.Scatter(x = list(years_world) , y = list(techno[t].get_eco().get_var_co2().values()),line=dict(width=2.0,shape='linear'),mode='lines',name=n))
-        fig_input[key].update_layout(title="CO2",yaxis_title='CO2 Cost [€/MWh]',xaxis_title="year",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+                fig_input[key].add_trace(
+                    go.Scatter(
+                        x=list(years_world),
+                        y=list(techno[t].get_eco().get_var_co2().values()),
+                        line=dict(width=2.0),
+                        mode='lines',
+                        name=n
+                    )
+                )
+        apply_layout(fig_input[key], title="CO₂ price trajectory", y_title='CO₂ cost [€/MWh]', x_title="Year")
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
     
 ##########################################################################
@@ -98,13 +189,24 @@ if plot_input:
 ##########################################################################
     
     key = 'week_demand'
-    if Display_input[key]: 
+    if Display_input[key]:
         fig_input[key] = go.Figure()
         for index, row in demand_average.iterrows():
-            fig_input[key].add_trace(go.Scatter(x=demand_average.columns,y=row,mode='lines',name=f'week {index}'))
-     
-        fig_input[key].update_layout(title="year - " + str(year),yaxis_title='Demand (MW)',xaxis_title=f"hour for {number_of_mean_weeks} weeks",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+            fig_input[key].add_trace(
+                go.Scatter(
+                    x=demand_average.columns,
+                    y=row,
+                    mode='lines',
+                    name=f'Week {index}',
+                    line=dict(width=2)
+                )
+            )
+        apply_layout(
+            fig_input[key],
+            title=f"Representative weeks — demand ({reference_year})",
+            y_title='Demand (MW)',
+            x_title=f"Hour across {number_of_mean_weeks} weeks"
+        )
      
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
     
@@ -116,10 +218,21 @@ if plot_input:
     if Display_input[key] :
         fig_input[key] = go.Figure()
         for index, row in pv_lf_new.iterrows():
-            fig_input[key].add_trace(go.Scatter(x=pv_lf_new.columns,y=row,mode='lines',name=f'week {index}'))
-     
-        fig_input[key].update_layout(title="year - " + str(year),yaxis_title='Load Factor PV',xaxis_title=f"hour for {number_of_mean_weeks} weeks",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+            fig_input[key].add_trace(
+                go.Scatter(
+                    x=pv_lf_new.columns,
+                    y=row,
+                    mode='lines',
+                    name=f'Week {index}',
+                    line=dict(width=1.8)
+                )
+            )
+        apply_layout(
+            fig_input[key],
+            title=f"Representative weeks — PV load factor ({reference_year})",
+            y_title='Load factor',
+            x_title=f"Hour across {number_of_mean_weeks} weeks"
+        )
      
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
     
@@ -131,10 +244,21 @@ if plot_input:
     if Display_input[key] :
         fig_input[key] = go.Figure()
         for index, row in won_lf_new.iterrows():
-            fig_input[key].add_trace(go.Scatter(x=won_lf_new.columns,y=row,mode='lines',name=f'week {index}'))
-     
-        fig_input[key].update_layout(title="year - " + str(year),yaxis_title='Load Factor WON',xaxis_title=f"hour for {number_of_mean_weeks} weeks",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+            fig_input[key].add_trace(
+                go.Scatter(
+                    x=won_lf_new.columns,
+                    y=row,
+                    mode='lines',
+                    name=f'Week {index}',
+                    line=dict(width=1.8)
+                )
+            )
+        apply_layout(
+            fig_input[key],
+            title=f"Representative weeks — onshore wind load factor ({reference_year})",
+            y_title='Load factor',
+            x_title=f"Hour across {number_of_mean_weeks} weeks"
+        )
      
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
 
@@ -147,10 +271,21 @@ if plot_input:
     
         fig_input[key] = go.Figure()
         for index, row in wof_lf_new.iterrows():
-            fig_input[key].add_trace(go.Scatter(x=wof_lf_new.columns,y=row,mode='lines',name=f'week {index}'))
-     
-        fig_input[key].update_layout(title="year - " + str(year),yaxis_title='Load Factor WOFF',xaxis_title=f"hour for {number_of_mean_weeks} weeks",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+            fig_input[key].add_trace(
+                go.Scatter(
+                    x=wof_lf_new.columns,
+                    y=row,
+                    mode='lines',
+                    name=f'Week {index}',
+                    line=dict(width=1.8)
+                )
+            )
+        apply_layout(
+            fig_input[key],
+            title=f"Representative weeks — offshore wind load factor ({reference_year})",
+            y_title='Load factor',
+            x_title=f"Hour across {number_of_mean_weeks} weeks"
+        )
      
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
 
@@ -160,12 +295,12 @@ if plot_input:
     
     key = 'load_factor_total'
     if Display_input[key] :
-     
-        aff_analyse_fc(dict_won_lf,weight_week_dict,'EOLIEN ONSHORE')
-        aff_analyse_fc(dict_wof_lf,weight_week_dict,'EOLIEN OFFSHORE')
-        aff_analyse_fc(dict_pv_lf,weight_week_dict,'PV')
-        aff_analyse_fc(dict_lake_lf,weight_week_dict,'LAKE')
-        aff_analyse_fc(dict_ror_lf,weight_week_dict,'ROR')
+        # Deterministic load factor analysis (uses first scenario year by default)
+        aff_analyse_fc(dict_won_lf, weight_week_dict, 'EOLIEN ONSHORE', weeks, hours, years, fig_input)
+        aff_analyse_fc(dict_wof_lf, weight_week_dict, 'EOLIEN OFFSHORE', weeks, hours, years, fig_input)
+        aff_analyse_fc(dict_pv_lf,  weight_week_dict, 'PV',              weeks, hours, years, fig_input)
+        aff_analyse_fc(dict_lake_lf,weight_week_dict, 'LAKE',            weeks, hours, years, fig_input)
+        aff_analyse_fc(dict_ror_lf, weight_week_dict, 'ROR',             weeks, hours, years, fig_input)
         
 ##########################################################################
 # Load Factor data
@@ -185,60 +320,99 @@ if plot_input:
         ##"##### Eolien Onshore ### 
      
         fig_input[key + 'plot 1'] = go.Figure()
-        fig_input[key + 'plot 1'].add_trace(go.Scatter(x=[i for i in range(1,52)],y=np.array(won_lf_weekmean),mode='lines',name="Moyenne hebdomadaire"))
-     
-        fig_input[key + 'plot 1'].add_trace(go.Scatter(x=[0,52] ,y=[won_lf_yearmean,won_lf_yearmean] , name="moyenne annuelle", line=dict(color="Red", width=2, dash="dot")) ) 
-     
-        fig_input[key + 'plot 1'].update_layout(title="Données d'entrée : des facteurs de charge de l'éolien onshore" ,yaxis_title='Facteur de charge',xaxis_title="Semaine",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15), showlegend=True)
+        fig_input[key + 'plot 1'].add_trace(go.Scatter(x=list(range(1,52)), y=np.array(won_lf_weekmean), mode='lines', name="Weekly mean", line=dict(width=2)))
+
+        fig_input[key + 'plot 1'].add_trace(
+            go.Scatter(
+                x=[0,52],
+                y=[won_lf_yearmean, won_lf_yearmean],
+                name="Annual mean",
+                line=dict(color="#ef4444", width=2, dash="dot")
+            )
+        )
+
+        apply_layout(
+            fig_input[key + 'plot 1'],
+            title="Load factor — onshore wind",
+            y_title='Load factor',
+            x_title="Week",
+            legend=True
+        )
         fig_input[key + 'plot 1'].add_annotation(
-        x=0.5,  # Position x de l'annotation (en coordonnées relatives, 0.5 est au milieu de l'axe x)
-        y=won_lf_yearmean*1.05,  # Position y de l'annotation
-        xref="paper",  # Utilisation de l'échelle de l'axe x
-        yref="y",  # Utilisation de l'échelle de l'axe y
-        text="Moyenne annuelle " + str(round(won_lf_yearmean,4)),
-        showarrow=False,
-        font=dict(color="Red", size=12))
+            x=0.5,
+            y=won_lf_yearmean*1.05,
+            xref="paper",
+            yref="y",
+            text=f"Annual mean: {won_lf_yearmean:.3f}",
+            showarrow=False,
+            font=dict(color="#ef4444", size=12)
+        )
     
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
     
         ##### Eolien Offshore ## 
      
         fig_input[key + 'plot 2'] = go.Figure()
-        fig_input[key + 'plot 2'].add_trace(go.Scatter(x=[i for i in range(1,52)],y=np.array(wof_lf_weekmean),mode='lines',name="Moyenne hebdomadaire"))
-     
-        fig_input[key + 'plot 2'].add_trace(go.Scatter(x=[0,52] ,y=[wof_lf_yearmean,wof_lf_yearmean] , name="moyenne annuelle", line=dict(color="Red", width=2, dash="dot")) ) 
-     
-        fig_input[key + 'plot 2'].update_layout(title="Données d'entrée : des facteurs de charge de l'EOLIEN OFFSHORE " ,yaxis_title='Facteur de charge',xaxis_title="Semaine",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15), showlegend=True)
+        fig_input[key + 'plot 2'].add_trace(go.Scatter(x=list(range(1,52)), y=np.array(wof_lf_weekmean), mode='lines', name="Weekly mean", line=dict(width=2)))
+
+        fig_input[key + 'plot 2'].add_trace(
+            go.Scatter(
+                x=[0,52],
+                y=[wof_lf_yearmean, wof_lf_yearmean],
+                name="Annual mean",
+                line=dict(color="#ef4444", width=2, dash="dot")
+            )
+        )
+
+        apply_layout(
+            fig_input[key + 'plot 2'],
+            title="Load factor — offshore wind",
+            y_title='Load factor',
+            x_title="Week",
+            legend=True
+        )
         fig_input[key + 'plot 2'].add_annotation(
-        x=0.5,  # Position x de l'annotation (en coordonnées relatives, 0.5 est au milieu de l'axe x)
-        y=wof_lf_yearmean*1.05,  # Position y de l'annotation
-        xref="paper",  # Utilisation de l'échelle de l'axe x
-        yref="y",  # Utilisation de l'échelle de l'axe y
-        text="Moyenne annuelle " + str(round(wof_lf_yearmean,4)),
-        showarrow=False,
-        font=dict(color="Red", size=12))
+            x=0.5,
+            y=wof_lf_yearmean*1.05,
+            xref="paper",
+            yref="y",
+            text=f"Annual mean: {wof_lf_yearmean:.3f}",
+            showarrow=False,
+            font=dict(color="#ef4444", size=12)
+        )
     
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
     
     ##### Eolien Onshore ## 
     
         fig_input[key + 'plot 3'] = go.Figure()
-        fig_input[key + 'plot 3'].add_trace(go.Scatter(x=[i for i in range(1,len(pv_lf_weekmean))],y=np.array(pv_lf_weekmean),mode='lines',name="Moyenne hebdomadaire"))
-     
-        fig_input[key + 'plot 3'].add_trace(go.Scatter(x=[0,len(pv_lf_weekmean)] ,y=[pv_lf_yearmean,pv_lf_yearmean] , name="moyenne annuelle", line=dict(color="Red", width=2, dash="dot")) ) 
-     
-        fig_input[key + 'plot 3'].update_layout(title="Données d'entrée : des facteurs de charge du PV " ,yaxis_title='Facteur de charge',xaxis_title="Semaine",
-                          width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15), showlegend=True)
+        fig_input[key + 'plot 3'].add_trace(go.Scatter(x=list(range(1, len(pv_lf_weekmean))), y=np.array(pv_lf_weekmean), mode='lines', name="Weekly mean", line=dict(width=2)))
+
+        fig_input[key + 'plot 3'].add_trace(
+            go.Scatter(
+                x=[0, len(pv_lf_weekmean)],
+                y=[pv_lf_yearmean, pv_lf_yearmean],
+                name="Annual mean",
+                line=dict(color="#ef4444", width=2, dash="dot")
+            )
+        )
+
+        apply_layout(
+            fig_input[key + 'plot 3'],
+            title="Load factor — PV",
+            y_title='Load factor',
+            x_title="Week",
+            legend=True
+        )
         fig_input[key + 'plot 3'].add_annotation(
-        x=0.5,  # Position x de l'annotation (en coordonnées relatives, 0.5 est au milieu de l'axe x)
-        y=pv_lf_yearmean*1.05,  # Position y de l'annotation
-        xref="paper",  # Utilisation de l'échelle de l'axe x
-        yref="y",  # Utilisation de l'échelle de l'axe y
-        text="Moyenne annuelle " + str(round(pv_lf_yearmean,4)),
-        showarrow=False,
-        font=dict(color="Red", size=12))
+            x=0.5,
+            y=pv_lf_yearmean*1.05,
+            xref="paper",
+            yref="y",
+            text=f"Annual mean: {pv_lf_yearmean:.3f}",
+            showarrow=False,
+            font=dict(color="#ef4444", size=12)
+        )
      
         #fig_input[key].write_html(current_path + '/out/' + name_simulation + '/input' + '/' + key + '.html')
         
@@ -249,6 +423,13 @@ if plot_input:
         
         fig_input[key] = go.Figure()
 
-        fig_input[key].add_trace(go.Scatter(x = list(pt_nuclear_hist.get_P().keys()) , y = list(pt_nuclear_hist.get_P().values()),line=dict(width=2.0),mode='lines'))
-        fig_input[key].update_layout(title="Nuclear historic Evolution" ,yaxis_title='Capacity (GW)',xaxis_title="years",width=fig_w,height=fig_h,margin=dict(l=50,r=150,b=30,t=50),font=dict(size=15))
+        fig_input[key].add_trace(
+            go.Scatter(
+                x=list(pt_nuclear_hist.get_P().keys()),
+                y=list(pt_nuclear_hist.get_P().values()),
+                line=dict(width=2.0),
+                mode='lines'
+            )
+        )
+        apply_layout(fig_input[key], title="Historic nuclear capacity", y_title='Capacity (GW)', x_title="Year")
         

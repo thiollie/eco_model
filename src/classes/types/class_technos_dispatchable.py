@@ -1,24 +1,36 @@
+from ..class_technos import Techno
+from typing import Any
+
+
 class Techno_Dispatchable(Techno):
-# --------------------- Constructor ----------------------------------------------------------------------------------    
-    def __init__(self, tname, ttype, tech_params, eco_params, prm_dispatchable):
-        super().__init__('dispatchable', tname, ttype, prm_eco, prm_dispatchable)
-        
-        self._prm_spec = prm_dispatchable
+# --------------------- Constructor ----------------------------------------------------------------------------------
+    def __init__(self, name: str, subtype: str, eco_params: Any, tech_params: Any, dispatch_params: Any):
+        """Dispatchable technology wrapper.
+
+        Parameters
+        ----------
+        name : str
+            Technology family name (e.g. 'gas').
+        subtype : str
+            Specific subtype (e.g. 'ccgt').
+        eco_params : Any
+            Economic parameter object.
+        tech_params : Any
+            Technical parameter object.
+        dispatch_params : Any
+            Dispatchable-specific parameter object (ramping, etc.).
+        """
+        super().__init__('dispatchable', name, subtype, eco_params, tech_params, dispatch_params)
+
 # --------------------- End Of Constructor ----------------------------------------------------------------------------
-        
-
-
-# --------------------- GET/SET methods -------------------------------------------------------------------------------
 
     # Get methods
-    def get_spec(self):
+    def get_spec(self) -> Any:  # semantic alias
         return self._prm_spec
 
-
     # Set methods
-    def set_spec(self, prm_dispatchable):
-        self._prm_spec = prm_dispatchable
+    def set_spec(self, dispatch_params: Any) -> None:
+        self._prm_spec = dispatch_params
 
-
-# --------------------- PRINT methods ---------------------------------------------------------------------------------
+    # PRINT keeps base implementation
 

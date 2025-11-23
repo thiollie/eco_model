@@ -1,24 +1,24 @@
+from ..class_technos import Techno
+from typing import Any
+
+
 class Techno_Fatal(Techno):
-# --------------------- Constructor ----------------------------------------------------------------------------------    
-    def __init__(self, tname, ttype, tech_params, eco_params, prm_fatal):
-        super().__init__('fatal', tname, ttype, prm_eco, prm_tech)
-        
-        self._prm_spec = prm_fatal
+# --------------------- Constructor ----------------------------------------------------------------------------------
+    def __init__(self, name: str, subtype: str, eco_params: Any, tech_params: Any, fatal_params: Any):
+        """Fatal (non-dispatchable) technology wrapper."""
+        super().__init__('fatal', name, subtype, eco_params, tech_params, fatal_params)
+
 # --------------------- End Of Constructor ----------------------------------------------------------------------------
-        
-
-
-# --------------------- GET/SET methods -------------------------------------------------------------------------------
 
     # Get methods
-    def get_spec(self):
-        return self._prm_fatal
-
+    def get_spec(self) -> Any:
+        return self._prm_spec
 
     # Set methods
-    def set_spec(self, prm_fatal):
-        self._prm_fatal = prm_fatal
+    def set_spec(self, fatal_params: Any) -> None:
+        self._prm_spec = fatal_params
+
+    # PRINT inherits base
 
 
 # --------------------- PRINT methods ---------------------------------------------------------------------------------
-
